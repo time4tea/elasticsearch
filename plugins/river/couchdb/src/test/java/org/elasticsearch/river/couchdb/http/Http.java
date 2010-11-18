@@ -60,7 +60,15 @@ public class Http {
 
         int responseCode = connection.getResponseCode();
 
-        InputStreamReader reader = new InputStreamReader(connection.getInputStream());
+        InputStreamReader reader;
+        
+        if ( responseCode >= 400) {
+            reader = new InputStreamReader(connection.getErrorStream());
+        }
+        else {
+            reader = new InputStreamReader(connection.getInputStream());
+        }
+
         try {
             String result = copyToString(reader);
             return new HttpResult(uri, "PUT", responseCode, responseHeadersFrom(connection), result);
