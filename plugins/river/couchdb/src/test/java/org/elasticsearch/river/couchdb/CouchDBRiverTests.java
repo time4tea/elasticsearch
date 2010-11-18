@@ -30,6 +30,7 @@ public class CouchDBRiverTests {
 
     private Couch couch;
     private CouchDatabase database;
+    private Node node;
 
     @BeforeMethod
     public void setUp() throws Exception {
@@ -40,10 +41,12 @@ public class CouchDBRiverTests {
         couch.start();
 
         database = couch.createDatabase("database");
+        node = startLocalNode();
     }
 
     @AfterMethod
     public void tearDown() throws Exception {
+        if ( node != null ) node.stop();
         if ( couch != null ) couch.stop();
     }
 
@@ -53,23 +56,26 @@ public class CouchDBRiverTests {
 
     @Test
     public void riverFlowsWhenCouchIsRunning() throws Exception {
-        Settings settings = settingsBuilder()
-                .put("gateway.type", "local")
-                .build();
-
-        Node node = nodeBuilder().settings(settings).node();
 
         startRiver(node, couchDbRiverFor(this.couch, this.database));
 
         database.createDocument("id", "{ \"test\" : \"value\" } ");
 
-        Thread.sleep(1000);
+        Thread.sleep(2000);
 
-        SearchResponse searchResponse = queryNodeFor(node, matchAllQuery());
+        SearchResponse searchResponse = queryNodeFor(node, termQuery("test", "value"));
 
         SearchHits hits = searchResponse.getHits();
         assertThat("Should find one document", hits.getTotalHits(), equalTo(1l));
+        assertThat("Document is the expected one", hits.getAt(0).getId(), equalTo("id"));
+    }
 
+    private Node startLocalNode() {
+        Settings settings = settingsBuilder()
+                .put("gateway.type", "local")
+                .build();
+
+        return nodeBuilder().settings(settings).node();
     }
 
     private SearchResponse queryNodeFor(Node node, XContentQueryBuilder query) {
