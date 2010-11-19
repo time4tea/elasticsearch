@@ -3,17 +3,19 @@ package org.elasticsearch.river.couchdb;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.index.query.xcontent.TermQueryBuilder;
 import org.elasticsearch.index.query.xcontent.XContentQueryBuilder;
 import org.elasticsearch.node.Node;
+import org.elasticsearch.river.couchdb.async.Timeout;
 import org.elasticsearch.river.couchdb.http.Http;
 import org.elasticsearch.river.couchdb.run.Couch;
-import org.elasticsearch.search.SearchHits;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.Callable;
 
 import static org.elasticsearch.client.Requests.*;
 import static org.elasticsearch.common.io.FileSystemUtils.*;
@@ -21,8 +23,9 @@ import static org.elasticsearch.common.settings.ImmutableSettings.*;
 import static org.elasticsearch.common.xcontent.XContentFactory.*;
 import static org.elasticsearch.index.query.xcontent.QueryBuilders.*;
 import static org.elasticsearch.node.NodeBuilder.*;
+import static org.elasticsearch.river.couchdb.SearchResponseMatchers.*;
+import static org.elasticsearch.river.couchdb.async.TimeoutTimer.*;
 import static org.elasticsearch.search.builder.SearchSourceBuilder.*;
-import static org.hamcrest.MatcherAssert.*;
 import static org.hamcrest.Matchers.*;
 
 public class CouchDBRiverTests {
@@ -61,13 +64,23 @@ public class CouchDBRiverTests {
 
         database.createDocument("id", "{ \"test\" : \"value\" } ");
 
-        Thread.sleep(2000);
+        Timeout timeout = Timeout.seconds(5);
 
-        SearchResponse searchResponse = queryNodeFor(node, termQuery("test", "value"));
+        within(timeout).assertThat(
+                "Should find a document", query(termQuery("test", "value")), hasHits(hasTotalHits(equalTo(1l)))
+        );
 
-        SearchHits hits = searchResponse.getHits();
-        assertThat("Should find one document", hits.getTotalHits(), equalTo(1l));
-        assertThat("Document is the expected one", hits.getAt(0).getId(), equalTo("id"));
+        within(timeout).assertThat(
+                "Document is the expected one", query(termQuery("test", "value")), hasHits(hasHitAtPosition(0, hasId(equalTo("id"))))
+        );
+    }
+
+    private Callable<SearchResponse> query(final TermQueryBuilder query) {
+        return new Callable<SearchResponse>() {
+            @Override public SearchResponse call() throws Exception {
+                return queryNodeFor(node, query);
+            }
+        };
     }
 
     private Node startLocalNode() {
